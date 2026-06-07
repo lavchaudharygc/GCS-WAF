@@ -1,0 +1,190 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  GCS-WAF v2.0 — docker-compose.yml
+#  Services: waf-core, redis, dashboard, scheduler, certbot (HTTPS)
+#
+#  Quick start:
+#    cp .env.example .env          # fill in your domain + secrets
+#    docker-compose up -d
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: "3.9"
+
+# ── shared network ────────────────────────────────────────────────────────────
+networks:
+  gcs-waf-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# ── named volumes ─────────────────────────────────────────────────────────────
+volumes:
+  redis-data:
+  waf-logs:
+  geoip-data:
+  certbot-conf:
+  certbot-www:
+
+services:
+
+  # ── WAF Core (OpenResty + Lua) ─────────────────────────────────────────────
+  gcs-waf-core:
+    build:
+      context: ./waf-core
+      dockerfile: Dockerfile
+    container_name: gcs-waf-core
+    restart: unless-stopped
+    networks:
+      gcs-waf-net:
+        ipv4_address: 172.28.0.2
+    ports:
+      - "${WAF_HTTP_PORT:-80}:80"
+      - "${WAF_HTTPS_PORT:-443}:443"
+    environment:
+      REDIS_HOST:             "gcs-waf-redis"
+      REDIS_PORT:             "6379"
+      WAF_SECRET:             "${WAF_SECRET:-change-me-in-production}"
+      GCS_BLOCKED_COUNTRIES:  "${GCS_BLOCKED_COUNTRIES:-}"
+      BACKEND_HOST:           "${BACKEND_HOST:-127.0.0.1}"
+      BACKEND_PORT:           "${BACKEND_PORT:-8888}"
+    volumes:
+      - waf-logs:/var/log/gcs-waf
+      - geoip-data:/etc/nginx/geoip:ro
+      - certbot-conf:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
+      # Live-reload Lua files during dev (comment out in production):
+      # - ./waf-core:/etc/nginx/waf:ro
+    depends_on:
+      gcs-waf-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    # FIX: proper stop signal for OpenResty (prevents zombie workers)
+    stop_signal: SIGQUIT
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ── Redis (behavior scores, blocklist, shared state) ──────────────────────
+  gcs-waf-redis:
+    image: redis:7-alpine
+    container_name: gcs-waf-redis
+    restart: unless-stopped
+    networks:
+      gcs-waf-net:
+        ipv4_address: 172.28.0.3
+    command: >
+      redis-server
+        --appendonly yes
+        --appendfsync everysec
+        --maxmemory 256mb
+        --maxmemory-policy allkeys-lru
+        --save 900 1
+        --save 300 10
+        --save 60 10000
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── WAF Dashboard (nginx serving the HTML dashboard) ──────────────────────
+  gcs-waf-dashboard:
+    image: nginx:alpine
+    container_name: gcs-waf-dashboard
+    restart: unless-stopped
+    networks:
+      gcs-waf-net:
+        ipv4_address: 172.28.0.4
+    ports:
+      - "${DASHBOARD_PORT:-8080}:80"
+    volumes:
+      - ./waf-dashboard:/usr/share/nginx/html:ro
+      - waf-logs:/var/log/gcs-waf:ro
+      - ./scripts/dashboard-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - gcs-waf-core
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Scheduler (cron-based: threat feeds, GeoIP updates, log rotation) ─────
+  gcs-waf-scheduler:
+    build:
+      context: ./scheduler
+      dockerfile: Dockerfile
+    container_name: gcs-waf-scheduler
+    restart: unless-stopped
+    networks:
+      gcs-waf-net:
+        ipv4_address: 172.28.0.5
+    environment:
+      REDIS_HOST:          "gcs-waf-redis"
+      REDIS_PORT:          "6379"
+      MAXMIND_LICENSE_KEY: "${MAXMIND_LICENSE_KEY:-}"
+      WAF_CORE_URL:        "http://gcs-waf-core"
+      SLACK_WEBHOOK:       "${SLACK_WEBHOOK:-}"
+      ALERT_EMAIL:         "${ALERT_EMAIL:-}"
+    volumes:
+      - waf-logs:/var/log/gcs-waf
+      - geoip-data:/geoip
+    depends_on:
+      gcs-waf-redis:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Certbot (auto HTTPS / Let's Encrypt) ──────────────────────────────────
+  gcs-waf-certbot:
+    image: certbot/certbot:latest
+    container_name: gcs-waf-certbot
+    restart: "no"
+    volumes:
+      - certbot-conf:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    profiles:
+      - ssl   # only starts with: docker-compose --profile ssl up
+    entrypoint: >
+      sh -c "trap exit TERM;
+             certbot certonly --webroot
+               --webroot-path=/var/www/certbot
+               --email ${CERTBOT_EMAIL:-admin@example.com}
+               --agree-tos --no-eff-email
+               -d ${WAF_DOMAIN:-example.com}
+               -d www.${WAF_DOMAIN:-example.com};
+             while :; do
+               certbot renew --quiet;
+               sleep 12h & wait $${!};
+             done"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"

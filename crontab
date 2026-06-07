@@ -1,0 +1,24 @@
+# GCS-WAF Scheduler — crontab
+# ─────────────────────────────────────────────────────────────────
+# Min  Hour  Day  Month  Weekday  Command
+
+# Threat intel: Tor exits every hour
+0    *     *    *      *        /usr/local/bin/python /app/update_feeds.py --feed tor_exit >> /var/log/gcs-waf/scheduler.log 2>&1
+
+# Threat intel: Emerging Threats every 12h
+0    0,12  *    *      *        /usr/local/bin/python /app/update_feeds.py --feed emerging_threats >> /var/log/gcs-waf/scheduler.log 2>&1
+
+# Threat intel: Spamhaus DROP/EDROP every 24h
+0    3     *    *      *        /usr/local/bin/python /app/update_feeds.py --feed spamhaus >> /var/log/gcs-waf/scheduler.log 2>&1
+
+# GeoIP database update every week (MaxMind updates Tuesdays)
+0    4     *    *      2        /usr/local/bin/python /app/update_geoip.py >> /var/log/gcs-waf/scheduler.log 2>&1
+
+# Log analysis + alerting every 5 minutes
+*/5  *     *    *      *        /usr/local/bin/python /app/analyze_logs.py >> /var/log/gcs-waf/scheduler.log 2>&1
+
+# Daily digest report at 08:00
+0    8     *    *      *        /usr/local/bin/python /app/daily_report.py >> /var/log/gcs-waf/scheduler.log 2>&1
+
+# Log rotation daily
+0    0     *    *      *        /usr/sbin/logrotate /etc/logrotate.d/gcs-waf >> /var/log/gcs-waf/scheduler.log 2>&1
